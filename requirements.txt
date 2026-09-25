@@ -1,0 +1,10 @@
+# torch: install separately for your CUDA (see README)
+torch-geometric
+numpy==1.26.4
+scipy
+pandas
+scikit-learn
+matplotlib
+ase
+tqdm
+e3nn==0.4.4

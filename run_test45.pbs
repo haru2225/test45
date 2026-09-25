@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+#PBS -q sg8
+#PBS -N test45
+#PBS -l walltime=20:00:00
+#PBS -l select=1:ncpus=8:mpiprocs=1:ompthreads=8:mem=32gb:ngpus=1
+#PBS -j oe
+set -euo pipefail
+cd "${PBS_O_WORKDIR:-$(dirname "${BASH_SOURCE[0]}")}"
+# Activate the environment created in README step 1 (edit to match your site).
+source "${VENV:-$HOME/venvs/test45}/bin/activate"
+exec python -u test45.py
