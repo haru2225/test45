@@ -4,8 +4,22 @@
 #PBS -l walltime=20:00:00
 #PBS -l select=1:ncpus=8:mpiprocs=1:ompthreads=8:mem=32gb:ngpus=1
 #PBS -j oe
+# Submit from the repo directory:  qsub -P PROJECT_ID run_test45.pbs
+# Optional: -v SIF_IMAGE=/path/test45.sif,EXTRA_BIND=/abs/path:/abs/path
 set -euo pipefail
 cd "${PBS_O_WORKDIR:-$(dirname "${BASH_SOURCE[0]}")}"
-# Activate the environment created in README step 1 (edit to match your site).
-source "${VENV:-$HOME/venvs/test45}/bin/activate"
-exec python -u test45.py
+work_dir="$(pwd -P)"
+
+runtime="${CONTAINER_RUNTIME:-singularity}"
+if ! command -v "$runtime" >/dev/null 2>&1 && command -v apptainer >/dev/null 2>&1; then
+    runtime=apptainer
+fi
+command -v "$runtime" >/dev/null 2>&1 || { echo 'Load Singularity or Apptainer first.' >&2; exit 2; }
+sif="${SIF_IMAGE:-$work_dir/test45.sif}"
+[[ -r "$sif" ]] || { echo "Missing container: $sif (build it: see README)" >&2; exit 2; }
+bind_args=(--bind "$work_dir:$work_dir")
+if [[ -n "${EXTRA_BIND:-}" ]]; then bind_args+=(--bind "$EXTRA_BIND"); fi
+
+exec "$runtime" exec --nv "${bind_args[@]}" --pwd "$work_dir" \
+    --env OMP_NUM_THREADS=8 --env MKL_NUM_THREADS=8 \
+    "$sif" python -u "$work_dir/test45.py"

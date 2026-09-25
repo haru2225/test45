@@ -1,0 +1,35 @@
+Bootstrap: docker
+From: pytorch/pytorch:2.5.0-cuda12.4-cudnn9-runtime
+
+%labels
+    Description "PyTorch CUDA + e3nn 0.4.4 + DM2 graphite runtime for test45"
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y --no-install-recommends ca-certificates libgomp1
+    rm -rf /var/lib/apt/lists/*
+
+    python -m pip install --no-cache-dir --upgrade pip
+    python -m pip install --no-cache-dir \
+        numpy==1.26.4 \
+        scipy \
+        pandas \
+        scikit-learn==1.6.1 \
+        matplotlib==3.9.4 \
+        ase==3.29.0 \
+        tqdm \
+        torch-geometric==2.6.1 \
+        e3nn==0.4.4
+    # DM2 provides the `graphite` package; pinned to the commit test45 was checked against.
+    python -m pip install --no-cache-dir --no-deps \
+        https://github.com/digital-synthesis-lab/DM2/archive/1c9b6d3cf2a29566bc3212b6982d77582412fb91.zip
+
+%environment
+    export PYTHONNOUSERSITE=1
+    export PYTHONUNBUFFERED=1
+    export MPLBACKEND=Agg
+    export MPLCONFIGDIR=/tmp/matplotlib-test45
+
+%test
+    python -c "import ase, e3nn, torch, torch_geometric, graphite; print('torch', torch.__version__, 'e3nn', e3nn.__version__)"
