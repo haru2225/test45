@@ -1,25 +1,93 @@
-#!/usr/bin/env bash
+#!/bin/bash
+# Clone haru2225/test45 and digital-synthesis-lab/DM2 side by side, then submit from test45/:
+#   qsub -P <ProjectGroup_ID> run_test45.pbs
+# If DM2 is elsewhere, pass DM2_ROOT with -v. The crystal data is bundled (data/).
+# Replace projectname below with the ProjectGroup ID shown by `listu`, or use
+# the command-line -P option above (qsub options override #PBS directives).
 #PBS -q sg8
-#PBS -N test45
-#PBS -l walltime=20:00:00
+#PBS -P projectname
+#PBS -N test45_crystal
+#PBS -l walltime=12:00:00
 #PBS -l select=1:ncpus=8:mpiprocs=1:ompthreads=8:mem=32gb:ngpus=1
 #PBS -j oe
-# Submit from the repo directory:  qsub -P PROJECT_ID run_test45.pbs
-# Optional: -v SIF_IMAGE=/path/test45.sif,EXTRA_BIND=/abs/path:/abs/path
-set -euo pipefail
-cd "${PBS_O_WORKDIR:-$(dirname "${BASH_SOURCE[0]}")}"
-work_dir="$(pwd -P)"
 
-runtime="${CONTAINER_RUNTIME:-singularity}"
-if ! command -v "$runtime" >/dev/null 2>&1 && command -v apptainer >/dev/null 2>&1; then
-    runtime=apptainer
+set -eu
+
+cd "$PBS_O_WORKDIR"
+
+. /etc/profile.d/modules.sh
+module purge
+module load cuda/12.4
+
+DM2_ROOT="${DM2_ROOT:-$PBS_O_WORKDIR/../DM2}"
+SIF_IMAGE="${SIF_IMAGE:-$PBS_O_WORKDIR/test45-pytorch-2.5.0-cu124.sif}"
+OUTPUT_DIR="${OUTPUT_DIR:-$PBS_O_WORKDIR/test45-output}"
+
+# test45.py trains from scratch if no checkpoint exists yet, then generates and exports CG data.
+CRYSTAL_DATA_PATH="${CRYSTAL_DATA_PATH:-$PBS_O_WORKDIR/data/silica_beta_cristobalite_init.data}"
+CHECKPOINT_PATH="${CHECKPOINT_PATH:-$PBS_O_WORKDIR/checkpoints/test45_sio2_crystal_2x2x2_nequip.pt}"
+NUM_UPDATES="${NUM_UPDATES:-30000}"
+DUPLICATE="${DUPLICATE:-128}"
+GEN_NOISY_STEPS="${GEN_NOISY_STEPS:-2900}"
+GEN_POLISH_STEPS="${GEN_POLISH_STEPS:-100}"
+GEN_CHECKPOINT_STEPS="${GEN_CHECKPOINT_STEPS:-100}"
+TRAINING_CHECKPOINT_EPOCHS="${TRAINING_CHECKPOINT_EPOCHS:-5}"
+TIME_BUDGET_HOURS="${TIME_BUDGET_HOURS:-11.5}"
+JOB_NCPUS="${PBS_NCPUS:-8}"
+
+if [ ! -r "$SIF_IMAGE" ]; then
+    echo "ERROR: Singularity image is not readable: $SIF_IMAGE" >&2
+    echo "Build it first with:" >&2
+    echo "  singularity build $SIF_IMAGE Singularity.test45.def" >&2
+    exit 1
 fi
-command -v "$runtime" >/dev/null 2>&1 || { echo 'Load Singularity or Apptainer first.' >&2; exit 2; }
-sif="${SIF_IMAGE:-$work_dir/test45.sif}"
-[[ -r "$sif" ]] || { echo "Missing container: $sif (build it: see README)" >&2; exit 2; }
-bind_args=(--bind "$work_dir:$work_dir")
-if [[ -n "${EXTRA_BIND:-}" ]]; then bind_args+=(--bind "$EXTRA_BIND"); fi
 
-exec "$runtime" exec --nv "${bind_args[@]}" --pwd "$work_dir" \
-    --env OMP_NUM_THREADS=8 --env MKL_NUM_THREADS=8 \
-    "$sif" python -u "$work_dir/test45.py"
+if [ ! -d "$DM2_ROOT/src/graphite" ]; then
+    echo "ERROR: DM2 source tree is not readable: $DM2_ROOT" >&2
+    echo "Clone https://github.com/digital-synthesis-lab/DM2 next to test45, or set DM2_ROOT with qsub -v." >&2
+    exit 1
+fi
+DM2_ROOT="$(cd "$DM2_ROOT" && pwd)"
+
+if [ ! -r "$CRYSTAL_DATA_PATH" ]; then
+    echo "ERROR: crystal reference structure is not readable: $CRYSTAL_DATA_PATH" >&2
+    echo "Set CRYSTAL_DATA_PATH with qsub -v." >&2
+    exit 1
+fi
+
+mkdir -p "$OUTPUT_DIR" "$(dirname "$CHECKPOINT_PATH")"
+
+export SINGULARITYENV_DM2_ROOT="$DM2_ROOT"
+export SINGULARITYENV_PYTHONPATH="$DM2_ROOT/src"
+export SINGULARITYENV_MPLBACKEND=Agg
+export SINGULARITYENV_PYTHONUNBUFFERED=1
+export SINGULARITYENV_PYTHONNOUSERSITE=1
+export SINGULARITYENV_OMP_NUM_THREADS="$JOB_NCPUS"
+
+echo "Starting test45 on $(hostname) at $(date)"
+echo "DM2_ROOT=$DM2_ROOT"
+echo "CRYSTAL_DATA_PATH=$CRYSTAL_DATA_PATH"
+echo "CHECKPOINT_PATH=$CHECKPOINT_PATH"
+echo "OUTPUT_DIR=$OUTPUT_DIR"
+echo "NUM_UPDATES=$NUM_UPDATES  DUPLICATE=$DUPLICATE"
+echo "GEN_STEPS=$GEN_NOISY_STEPS+$GEN_POLISH_STEPS"
+
+singularity exec --nv \
+    --bind "$DM2_ROOT:$DM2_ROOT" \
+    --bind "$(dirname "$CRYSTAL_DATA_PATH"):$(dirname "$CRYSTAL_DATA_PATH")" \
+    --bind "$(dirname "$CHECKPOINT_PATH"):$(dirname "$CHECKPOINT_PATH")" \
+    --pwd "$PBS_O_WORKDIR" \
+    "$SIF_IMAGE" \
+    python -u "$PBS_O_WORKDIR/test45.py" \
+        --crystal-data "$CRYSTAL_DATA_PATH" \
+        --checkpoint "$CHECKPOINT_PATH" \
+        --output-dir "$OUTPUT_DIR" \
+        --num-updates "$NUM_UPDATES" \
+        --duplicate "$DUPLICATE" \
+        --gen-noisy-steps "$GEN_NOISY_STEPS" \
+        --gen-polish-steps "$GEN_POLISH_STEPS" \
+        --generation-checkpoint-steps "$GEN_CHECKPOINT_STEPS" \
+        --training-checkpoint-epochs "$TRAINING_CHECKPOINT_EPOCHS" \
+        --time-budget-hours "$TIME_BUDGET_HOURS"
+
+echo "Finished test45 at $(date)"
