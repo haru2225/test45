@@ -28,6 +28,13 @@ CRYSTAL_DATA_PATH="${CRYSTAL_DATA_PATH:-$PBS_O_WORKDIR/data/silica_beta_cristoba
 CHECKPOINT_PATH="${CHECKPOINT_PATH:-$PBS_O_WORKDIR/checkpoints/test45_sio2_crystal_2x2x2_nequip.pt}"
 NUM_UPDATES="${NUM_UPDATES:-30000}"
 DUPLICATE="${DUPLICATE:-128}"
+BATCH_SIZE="${BATCH_SIZE:-16}"
+CUTOFF="${CUTOFF:-5.0}"
+# Only edges <= CUTOFF survive DownselectEdges after rattle, so LARGE_CUTOFF just needs a margin
+# over CUTOFF for the training sigma_max (default 0.75 A); the DM2 default (10.0, tuned for a
+# ~36 A glass box) is far denser than needed here and can cause CUDA OOM (see module docstring's
+# cell-replication note for why the box size matters). Lower it (e.g. 7.25) or BATCH_SIZE on OOM.
+LARGE_CUTOFF="${LARGE_CUTOFF:-10.0}"
 GEN_NOISY_STEPS="${GEN_NOISY_STEPS:-2900}"
 GEN_POLISH_STEPS="${GEN_POLISH_STEPS:-100}"
 GEN_CHECKPOINT_STEPS="${GEN_CHECKPOINT_STEPS:-100}"
@@ -69,7 +76,7 @@ echo "DM2_ROOT=$DM2_ROOT"
 echo "CRYSTAL_DATA_PATH=$CRYSTAL_DATA_PATH"
 echo "CHECKPOINT_PATH=$CHECKPOINT_PATH"
 echo "OUTPUT_DIR=$OUTPUT_DIR"
-echo "NUM_UPDATES=$NUM_UPDATES  DUPLICATE=$DUPLICATE"
+echo "NUM_UPDATES=$NUM_UPDATES  DUPLICATE=$DUPLICATE  BATCH_SIZE=$BATCH_SIZE  CUTOFF=$CUTOFF  LARGE_CUTOFF=$LARGE_CUTOFF"
 echo "GEN_STEPS=$GEN_NOISY_STEPS+$GEN_POLISH_STEPS"
 
 singularity exec --nv \
@@ -84,6 +91,9 @@ singularity exec --nv \
         --output-dir "$OUTPUT_DIR" \
         --num-updates "$NUM_UPDATES" \
         --duplicate "$DUPLICATE" \
+        --batch-size "$BATCH_SIZE" \
+        --cutoff "$CUTOFF" \
+        --large-cutoff "$LARGE_CUTOFF" \
         --gen-noisy-steps "$GEN_NOISY_STEPS" \
         --gen-polish-steps "$GEN_POLISH_STEPS" \
         --generation-checkpoint-steps "$GEN_CHECKPOINT_STEPS" \
