@@ -13,6 +13,7 @@ From: pytorch/pytorch:2.5.0-cuda12.4-cudnn9-runtime
         "matplotlib>=3.7,<4" \
         "scikit-learn>=1.3,<2" \
         "scipy>=1.10,<2" \
+        "pandas>=2.0,<3" \
         "torch-geometric>=2.5,<3" \
         "tqdm>=4.65,<5"
 
@@ -25,4 +26,4 @@ From: pytorch/pytorch:2.5.0-cuda12.4-cudnn9-runtime
     exec python "$@"
 
 %test
-    python -c "import torch, numpy, ase, e3nn, matplotlib, sklearn, scipy, torch_geometric; print('torch:', torch.__version__); print('CUDA build:', torch.version.cuda)"
+    python -c "import torch, numpy, ase, e3nn, matplotlib, sklearn, scipy, pandas, torch_geometric; print('torch:', torch.__version__); print('CUDA build:', torch.version.cuda)"
