@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""test45 = test33 (below) with the NequIP irreps raised to l<=3 (hidden 64x0e+32x1e+16x2e+8x3e,
-edge 4x0e+4x1e+2x2e+2x3e; test33: l<=1 hidden / l<=2 edge). Only that and default paths differ.
+"""test45 = test33 (below) with the NequIP irreps raised to l<=3 by default (hidden
+64x0e+32x1e+16x2e+8x3e, edge 4x0e+4x1e+2x2e+2x3e; test33: l<=1 hidden / l<=2 edge), and default
+paths changed. The irreps/num_convs are CLI-configurable (--irreps-hidden/--irreps-edge/--num-convs)
+so a CUDA OOM from the l<=3 tensor products can be narrowed down without editing the file.
 
 Train test33's DM2 NequIP denoiser on a replicated SiO2 crystal, generate
 a structure, and export a Si-only CG trajectory.
@@ -98,6 +100,14 @@ def parse_args() -> argparse.Namespace:
                          help="Final trained state-dict path. If it already exists, training is skipped.")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--cutoff", type=float, default=5.0)
+    parser.add_argument("--irreps-hidden", default="64x0e + 32x1e + 16x2e + 8x3e",
+                         help="NequIP hidden-layer irreps (test45 default: l<=3; test33 used '64x0e + 32x1e', l<=1). "
+                              "Lower multiplicities on the l=2/l=3 terms (e.g. '64x0e + 32x1e + 8x2e + 4x3e') "
+                              "to cut e3nn tensor-product memory if you hit CUDA OOM.")
+    parser.add_argument("--irreps-edge", default="4x0e + 4x1e + 2x2e + 2x3e",
+                         help="Spherical-harmonics irreps used for edges (test45 default: l<=3; test33 used "
+                              "'4x0e + 4x1e + 2x2e', l<=2). Must be consistent with --irreps-hidden.")
+    parser.add_argument("--num-convs", type=int, default=3, help="Number of NequIP interaction layers.")
     parser.add_argument("--large-cutoff", type=float, default=10.0,
                          help="Pre-rattle graph margin used only during TRAINING dataset construction.")
     parser.add_argument("--learn-rate", type=float, default=2e-4)
@@ -240,15 +250,16 @@ class InitialEmbedding(nn.Module):
         return data
 
 
-def build_model(cutoff: float, device: torch.device) -> NequIP:
+def build_model(cutoff: float, device: torch.device, irreps_hidden: str, irreps_edge: str,
+                 num_convs: int) -> NequIP:
     return NequIP(
         init_embed=InitialEmbedding(num_species=2, cutoff=cutoff),
         irreps_node_x="8x0e",
         irreps_node_z="8x0e",
-        irreps_hidden="64x0e + 32x1e + 16x2e + 8x3e",  # test45: l up to 3 (test33: up to l=1)
-        irreps_edge="4x0e + 4x1e + 2x2e + 2x3e",  # test45: l up to 3 (test33: up to l=2)
+        irreps_hidden=irreps_hidden,  # test45 default: l up to 3 (test33: up to l=1)
+        irreps_edge=irreps_edge,  # test45 default: l up to 3 (test33: up to l=2)
         irreps_out="1x1e",
-        num_convs=3,
+        num_convs=num_convs,
         radial_neurons=[16, 64],
         num_neighbors=12,
     ).to(device)
@@ -651,7 +662,7 @@ def main() -> int:
     print(f"Unit cell: {len(unit_atoms)} atoms {np.diag(np.asarray(unit_atoms.cell))} A -> "
           f"replicated: {len(crystal_atoms)} atoms {np.diag(np.asarray(crystal_atoms.cell))} A", flush=True)
 
-    model = build_model(args.cutoff, device)
+    model = build_model(args.cutoff, device, args.irreps_hidden, args.irreps_edge, args.num_convs)
     if args.checkpoint.is_file():
         model.load_state_dict(torch_load(args.checkpoint, map_location="cpu"))
         model.to(device)

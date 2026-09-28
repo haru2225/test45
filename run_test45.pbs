@@ -35,6 +35,11 @@ CUTOFF="${CUTOFF:-5.0}"
 # ~36 A glass box) is far denser than needed here and can cause CUDA OOM (see module docstring's
 # cell-replication note for why the box size matters). Lower it (e.g. 7.25) or BATCH_SIZE on OOM.
 LARGE_CUTOFF="${LARGE_CUTOFF:-10.0}"
+# If CUDA OOM persists at BATCH_SIZE=1, the l<=3 e3nn tensor products themselves (not the graph
+# size) are likely the cause -- shrink the l=2/l=3 channel counts here rather than the graph.
+IRREPS_HIDDEN="${IRREPS_HIDDEN:-64x0e + 32x1e + 16x2e + 8x3e}"
+IRREPS_EDGE="${IRREPS_EDGE:-4x0e + 4x1e + 2x2e + 2x3e}"
+NUM_CONVS="${NUM_CONVS:-3}"
 GEN_NOISY_STEPS="${GEN_NOISY_STEPS:-2900}"
 GEN_POLISH_STEPS="${GEN_POLISH_STEPS:-100}"
 GEN_CHECKPOINT_STEPS="${GEN_CHECKPOINT_STEPS:-100}"
@@ -94,6 +99,9 @@ singularity exec --nv \
         --batch-size "$BATCH_SIZE" \
         --cutoff "$CUTOFF" \
         --large-cutoff "$LARGE_CUTOFF" \
+        --irreps-hidden "$IRREPS_HIDDEN" \
+        --irreps-edge "$IRREPS_EDGE" \
+        --num-convs "$NUM_CONVS" \
         --gen-noisy-steps "$GEN_NOISY_STEPS" \
         --gen-polish-steps "$GEN_POLISH_STEPS" \
         --generation-checkpoint-steps "$GEN_CHECKPOINT_STEPS" \
